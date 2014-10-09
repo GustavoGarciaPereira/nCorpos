@@ -3,9 +3,12 @@ import StateUtil
 import Graphics.Rendering.OpenGL
 import Data.IORef
 import Graphics.UI.GLUT
---import Foreign.C.Types
+import Control.Parallel.Strategies
+import Data.List
+import Data.List.Split
+import Foreign.C.Types
 --g = 6.674287*10**(-11)
-
+instance NFData CDouble -- Necessário para usar deepseq em GLfloat
 g=1
 forcaGravitacional m1 m2 r = if r == 0  then  0 
 							 else if r<0 then -g*m1*m2/r**2
@@ -55,8 +58,9 @@ forcaIndividual f corpo = map (\(posicao,massa,velocidade) -> do
 																let s2 = if (snd distancia) <0 then -1
 																		 else  1
 																
-																(s1*forca*cos angulo,s2*forca*sin angulo) 																												
+																(s1*forca*cos angulo,s2*forca*sin angulo) 	
 																) f
+
 
 forcaTotalUmCorpo :: [Forca] -> Forca
 forcaTotalUmCorpo f  = foldl (\a (x,y)->(fst a +x, snd a+y)) (0,0) f 
@@ -69,6 +73,8 @@ forcaTotalTodosCorpos corpos corposIterados = do
 
 
 													
+													
+													
 movimento :: Tempo->[Forca]->[Corpo]->[Corpo]
 movimento _ [] [] = []
 movimento dtempo (forca:forcaxs) (corposAntes:corposAntesxs) = do 
@@ -80,7 +86,19 @@ movimento dtempo (forca:forcaxs) (corposAntes:corposAntesxs) = do
 										let newPosicaoy =snd(fstTripla(corposAntes))+ newVelocidadey*dtempo
 										let newPosicao = (newPosicaox,newPosicaoy) 
 										[(newPosicao,massa,newVelocidade)]++movimento dtempo  forcaxs  corposAntesxs
-					
+
+linhaNormal :: [Corpo]->Int-> [[Corpo]]
+linhaNormal c tamanhoChunk= chunksOf tamanhoChunk c 
+										
+forcaTotalParalelo :: [[Corpo]]->Eval [ Forca]
+forcaTotalParalelo  [] = return []
+forcaTotalParalelo	(c:cs) = do
+							p1 <- rpar(forcaTotalTodosCorpos c c)
+							p2 <- forcaTotalParalelo cs 			
+							rdeepseq p1
+							return (p1++p2)  
+
+								
 fstTripla (a,b,c) = a
 sndTripla (a,b,c)  = b 
 thdTripla (a,b,c)  = c
@@ -88,10 +106,19 @@ thdTripla (a,b,c)  = c
 
 keyboard radius (Char '+') Down _ _ = do
   r <- get radius
-  radius $= movimento 0.001 (forcaTotalTodosCorpos r r )  r
+  --radius $= r+0.05
+  let particao = linhaNormal  r 4
+  let forcaTotal = runEval( forcaTotalParalelo particao)
+  radius $= movimento 0.001 forcaTotal  r
   postRedisplay Nothing
+--keyboard radius (Char '-') Down _ _ = do
+--  r <- get radius
+--  radius $= r-0.05
+--  postRedisplay Nothing
 keyboard _ _ _ _ _ = return ()
 
+myPoints :: [(GLfloat,GLfloat)]
+myPoints = [ (sin (2*pi*k/12), cos (2*pi*k/12)) | k <- [1..12] ]
 
 display  radius p= do 
   --print p
@@ -109,16 +136,23 @@ main = do
   let c2 = ((0.1,0),(5::GLdouble),(0,0)) --5
   let c3 = ((0.2,0),(1::GLdouble),(0,0))
   let c4 = ((0,0.1),(1::GLdouble),(0,0))
+  
   let corpos = [c1,c2,c3,c4]
-
+  
+  let tamanhoChunks = (length(corpos) `div` (4))
+  
+  
+  
+ -- let corpos = [c1,c2,c3,c4,c5,c6,c7,c8,c11,c12,c13,c14,c15,c16,c17,c18]
+  --let sol  = ((0,(1.5*10^11)),(2*10**30),(0,0)  )
+  --let terra = ((0,0), (6*10**24), (0,0) )
+  --let lua  = ((3.8*10^8,0),(7.3 * 10**22 ),(0,0))
+  --let corpos = [terra,sol,lua]
   print corpos
-  let escala = corpos 
+  let escala = corpos --map (\(posicao,massa,velocidade) -> ((((fst posicao)/5),((snd posicao)/5)),massa,velocidade)  ) corpos   
   print escala
   radius <- new corpos
   displayCallback $= display radius escala
   keyboardMouseCallback $= Just (keyboard radius)
   mainLoop
-	
-	
-
 	
