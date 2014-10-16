@@ -88,9 +88,10 @@ forcaTotalTodosCorpos corpos corposIterados = do
 numeroMovimentos :: Int ->Tempo->[Forca]->[Corpo]->[Corpo]
 numeroMovimentos 0 _ _ _ =[]
 numeroMovimentos n dtempo forca corpo = do
-										 let particao = linhaNormal  corpo 4
+										 let particao = linhaNormal  corpo (200 `div` 2)
 										 let forcaTotal = runEval( forcaTotalParalelo corpo particao)
-										 numeroMovimentos (n-1) dtempo forca (movimento (60*60) forcaTotal  corpo)												
+										 let teste = movimento (60*60) forcaTotal  corpo
+										 teste++numeroMovimentos (n-1) dtempo forca (teste)												
 													
 movimento :: Tempo->[Forca]->[Corpo]->[Corpo]
 movimento _ [] [] = []
@@ -112,9 +113,9 @@ linhaNormal c tamanhoChunk= chunksOf tamanhoChunk c
 forcaTotalParalelo :: [Corpo]->[[Corpo]]->Eval [ Forca]
 forcaTotalParalelo  _ [] = return []
 forcaTotalParalelo	c0 (c:cs) = do
-							p1 <- rpar(forcaTotalTodosCorpos c0 c) 
+							p1 <- rpar( force (forcaTotalTodosCorpos c0 c)) 
 							p2 <- forcaTotalParalelo c0 cs 			
-							rdeepseq p1
+							--rdeepseq p1
 							return (p1++p2)  
 
 								
@@ -198,18 +199,18 @@ main = do
   let terra = ((0,0), (6*10**24), (0,0) )
   let lua  = ((3.8*10^8,0),(7.3 * 10**22 ),(0,0))
   --let corpos = [terra,sol,lua]
-  corpos <- randomBodies 1000
+  corpos <- randomBodies 200
   
   
   
   
   t0 <- getCurrentTime
-  let particao = linhaNormal  corpos (1000 `div` 4)
+  let particao = linhaNormal  corpos (200 `div` 2)
   let forcaTotal = runEval( forcaTotalParalelo corpos particao)
- 
-  t1 <- ( numeroMovimentos 5000000 (60*60) forcaTotal corpos) `deepseq` getCurrentTime
   
-  putStrLn $ (show $ diffUTCTime t1 t0) 
+  t1 <- ( numeroMovimentos 50 (60*60) forcaTotal corpos) `deepseq` getCurrentTime
+  
+  
 --  numeroMovimentos :: Int ->Tempo->[Forca]->[Corpo]->[Corpo]
   
   --print corpos
@@ -223,11 +224,11 @@ main = do
 	
 
   ortho2D x0 xf y0 yf
-	
-  radius <- new corpos
-  displayCallback $= display radius escala
-  keyboardMouseCallback $= Just (keyboard radius)
-  mainLoop
+  putStrLn $ (show $ diffUTCTime t1 t0) 	
+ -- radius <- new corpos
+ -- displayCallback $= display radius escala
+ -- keyboardMouseCallback $= Just (keyboard radius)
+ -- mainLoop
 	--radius  <- new 0.1
 	--displayCallback $= display radius
 	--keyboardMouseCallback $= Just (keyboard radius)
