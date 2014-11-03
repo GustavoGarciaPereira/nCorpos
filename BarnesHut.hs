@@ -1,3 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
+--{-# LANGUAGE TemplateHaskell #-}
+--import Control.DeepSeq.TH
+import GHC.Generics
+import Control.DeepSeq.Generics
 import System.Environment
 --import StateUtil
 import Graphics.Rendering.OpenGL
@@ -12,6 +17,8 @@ import System.Random
 import Data.Time.Clock
 import Control.DeepSeq
 import Debug.Trace
+import Control.Exception
+
 
 type X  = GLdouble
 type Y  = GLdouble
@@ -26,9 +33,15 @@ type Tempo = GLdouble
 type Quadrante = Int
 type Coordenadas = ((X,X),(Y,Y),Quadrante)
 
+rdeepPar :: NFData a => Strategy a
+rdeepPar pontos = rpar(force pontos)
+
 
 g = 6.674287*10**(-11)
 instance NFData CDouble -- Necessário para usar deepseq em GLfloat
+
+
+
 
 forcaGravitacional m1 m2 r = if r == 0  then  0 
 							 else if r<0 then -g*m1*m2/r**2
@@ -51,61 +64,115 @@ subtracaovetorial :: (X,Y)->(X,Y)->(X,Y)
 subtracaovetorial v1 v2 = (fst v1 - fst v2,snd v1 -snd v2)
 
 
-data QuadTree a m coordenadas limites = Empty
+data QuadTree a m coordenadas limites = Empty [Corpo]
               | Nodo m coordenadas limites
 			 	(QuadTree  a m coordenadas limites ) 
 				(QuadTree  a m coordenadas limites ) 
 				(QuadTree  a m coordenadas limites ) 
 				(QuadTree  a m coordenadas limites )
-              deriving (Eq,Ord,Show,Read)
+				deriving (Show, Generic)
+ 
+
+
+instance (NFData a,NFData m,NFData coordenadas,NFData limites) =>NFData (QuadTree a m coordenadas limites) where	
+	rnf (Empty z)= ()
+	rnf (Nodo a1 a2 a3 a4 a5 a6 a7) = rnf a1 `seq ` rnf a2 `seq ` rnf a3 `seq ` rnf a4 `seq ` rnf a5 `seq ` rnf a6 `seq ` rnf a7
+
 	
-	
+
+
 			  
-populaArvore :: Int->[Corpo]->Coordenadas->(QuadTree a Massa Posicao Coordenadas)
-populaArvore _ [] _ = Empty
+populaArvore ::   Int->[Corpo]->Coordenadas->Eval (QuadTree a Massa Posicao Coordenadas)
+populaArvore _ [] _ =return $ Empty []
 populaArvore 1 corpo c1  = do 
 	let massaTotal =  foldl (\a (x,y,z)->(a +y)) (0) corpo 
 	let centroMassa= fstTripla(head corpo)
-	Nodo massaTotal centroMassa c1 (Empty) (Empty) (Empty) (Empty)
+	return $ Nodo massaTotal centroMassa c1 (Empty []) (Empty []) (Empty []) (Empty [])
 populaArvore _ corpo c1 = do  
 							
 								  let xmin = fst(fstTripla c1)
-								  let xmax = fst (sndTripla c1)
-								  let ymin = snd (fstTripla c1)
+								  let xmax = snd (fstTripla c1)
+								  let ymin = fst (sndTripla c1)
 								  let ymax = snd (sndTripla c1)
 								  
-								  let coord1 = ((xmin,((xmax-xmin)/2)),(((ymax-ymin)/2),ymax),1)
-								  let coord2 = (((xmax-xmin)/2,xmax),((ymax-ymin)/2,ymax),2)
-								  let coord3 = ((xmin,(xmax-xmin)/2),(ymin,(ymax-ymin)/2),3)
-								  let coord4 = (((xmax-xmin)/2,xmax),(ymin,(ymax-ymin)/2),4)							  
+								  let coord1 = ((xmin,(xmin+xmax)/2),(((ymin+ymax)/2),ymax),1)
+								  let coord2 = (((xmin+xmax)/2,xmax),((ymin+ymax)/2,ymax),2)
+								  let coord3 = ((xmin,(xmin+xmax)/2),(ymin,(ymin+ymax)/2),3)
+								  let coord4 = (((xmin+xmax)/2,xmax),(ymin,(ymin+ymax)/2),4)							  
 								  
-								  let p1tupla = partition (\(x,y,z)-> fst x < fst( sndTripla coord1) && snd x>= snd (fstTripla coord1)) corpo
+								  let p1tupla = partition (\(x,y,z)-> fst x < snd( fstTripla coord1) && snd x>= fst (sndTripla coord1)) corpo
 								  let p1 = fst p1tupla
 								  
-								  let p2tupla = partition (\(x,y,z)-> fst x >= fst(fstTripla coord2) && snd x >= snd(fstTripla coord2)) (snd p1tupla)
+								  let p2tupla = partition (\(x,y,z)-> fst x >= fst(fstTripla coord2) && snd x >= fst(sndTripla coord2)) (snd p1tupla)
 								  let p2 = fst p2tupla
 								  
-								  let p3tupla = partition (\(x,y,z)-> fst x< fst(sndTripla coord3) && snd x < snd(sndTripla coord3)) (snd p2tupla)
+								  let p3tupla = partition (\(x,y,z)-> fst x< snd(fstTripla coord3) && snd x < snd(sndTripla coord3)) (snd p2tupla)
 								  let p3 = fst p3tupla
 								  
 								  let p4 = snd p3tupla
-								  let massaTotal =  foldl (\a (x,y,z)->(a +y)) (0) corpo 
+								  
+								  
+								  
+								 
 
-								  let centroMassaTotal= foldl (\a (x,y,z)->(fst a+(fst x)*y ,snd a+(snd x)*y )) (0,0) corpo 
-								  let centroMassa = (fst centroMassaTotal/massaTotal,snd centroMassaTotal/massaTotal)
-								  Nodo massaTotal centroMassa c1 (populaArvore (length p1) p1 coord1 ) (populaArvore (length p2) p2 coord2) (populaArvore (length p3) p3 coord3) (populaArvore (length p4) p4 coord4)
+																		  
+								  
+								  if (((xmax-xmin))<100 && ((ymax-ymin))<100 ) then do
+									let massaTotal =  foldl (\a (x,y,z)->(a +y)) (0) corpo 
+									let centroMassaTotal= foldl (\a (x,y,z)->(fst a+(fst x)*y ,snd a+(snd x)*y )) (0,0) corpo 
+									let centroMassa = (fst centroMassaTotal/massaTotal,snd centroMassaTotal/massaTotal)
+									trace ("x: " ++ show (xmax)) $  return $ Nodo massaTotal centroMassa c1 (Empty p1) (Empty p2) (Empty p3) (Empty p4)
+								  else do	
+									a0 <-rpar $ force$ populaArvore (length p1) p1 coord1 
+									a1 <- if length p1 > 1000 then  rpar $ populaArvore (length p1) p1 coord1  
+										  else rseq $  populaArvore (length p1) p1 coord1
+									a2 <- if length p2 > 1000 then  rpar(populaArvore (length p2) p2 coord2) 
+										  else rseq(populaArvore (length p2) p1 coord2) 
+									a3 <- if length p3 > 1000 then  rpar(populaArvore (length p3) p3 coord3) 
+										  else rseq(populaArvore (length p3) p3 coord3) 
+									a4 <- if length p4 > 1000 then  rpar(populaArvore (length p4) p4 coord4) 
+										  else rseq(populaArvore (length p4) p4 coord4) 
+									
+									
+									
+									
+									
+									--(Nodo massaTotal1 centroMassa1 _ _ _ _ _ )<-a1
+									--(Nodo massaTotal2 centroMassa2 _ _ _ _ _ )<-a2
+									--(Nodo massaTotal3 centroMassa3 _ _ _ _ _ )<-a3
+									--(Nodo massaTotal4 centroMassa4 _ _ _ _ _ )<-a4
+									
+									
+									--let (Nodo massaTotal1 centroMassa1 _ _ _ _ _ )  = if length p1 > 10 then  runEval $  rpar(populaArvore (length p1) p1 coord1)
+									--												else  populaArvore (length p1) p1 coord1
+									--let (Nodo massaTotal2 centroMassa2 _ _ _ _ _ )  =  if length p2 >10 then  rpar(   populaArvore (length p2) p2 coord2)
+									--												else  populaArvore (length p2) p1 coord2
+									--let (Nodo massaTotal3 centroMassa3 _ _ _ _ _ )   = if length p3 > 10 then  rpar(   populaArvore (length p3) p3 coord3)
+									--												else  populaArvore (length p3) p3 coord3
+									--let (Nodo massaTotal4 centroMassa4 _ _ _ _ _ )  = if length p4  >10 then   rpar(   populaArvore (length p4) p4 coord4)
+									--												else  populaArvore (length p4) p4 coord4
+									
+									--let massaTotal = massaTotal1+massaTotal2+massaTotal3+massaTotal4
+									--let centroMassaTotal = ((fst centroMassa1*massaTotal1)+(fst centroMassa2*massaTotal2)+(fst centroMassa3*massaTotal3)+(fst centroMassa4*massaTotal4),(snd centroMassa1*massaTotal1)+(snd centroMassa2*massaTotal2)+(snd centroMassa3*massaTotal3)+(snd centroMassa4*massaTotal4))
+									let massaTotal =  foldl (\a (x,y,z)->(a +y)) (0) corpo 
+									let centroMassaTotal= foldl (\a (x,y,z)->(fst a+(fst x)*y ,snd a+(snd x)*y )) (0,0) corpo 
+									let centroMassa = (fst centroMassaTotal/massaTotal,snd centroMassaTotal/massaTotal)
+									let centroMassa = (fst centroMassaTotal/massaTotal,snd centroMassaTotal/massaTotal)
+									return $ Nodo massaTotal centroMassa c1 ( runEval $ a1 ) ( runEval $ a2) ( runEval $ a3) ( runEval $ a4)
 	
 
 	
 somaForcas::(QuadTree a Massa Posicao Coordenadas)->Corpo ->Forca	
-somaForcas Empty _ = (0,0)
-somaForcas (Nodo m coordenadas limites Empty Empty Empty Empty) corpo = if (pertence limites corpo)== True then (0,0)
+somaForcas (Empty _) _ = (0,0)
+
+somaForcas (Nodo m coordenadas limites (Empty _) (Empty _) (Empty _) (Empty _)) corpo = if (pertence limites corpo)== True then (0,0)
 																		else calculoForcas  m coordenadas corpo 														
 somaForcas (Nodo m coordenadas limites a1 a2 a3 a4) corpo = do 
 				if (pertence limites corpo)== True then
 					(fst (somaForcas a1 corpo) + fst (somaForcas a2 corpo) + fst (somaForcas a3 corpo) + fst (somaForcas a4 corpo) ,  snd (somaForcas a1 corpo) + snd (somaForcas a2 corpo) + snd (somaForcas a3 corpo) + snd (somaForcas a4 corpo))
 				else calculoForcas m coordenadas corpo  
-
+		
+				
 calculoForcas::Massa-> Posicao->Corpo->Forca
 calculoForcas m coordenadas corpo = do 
 						let distancia = subtracaovetorial  coordenadas (fstTripla corpo) 
@@ -152,7 +219,7 @@ eixoX [] = []
 eixoX (c:cs) = [fst(fstTripla c)]++eixoX cs 
 
 eixoY:: [Corpo] ->[Y]
-
+eixoY [] = []
 eixoY (c:cs) = [snd(fstTripla c)]++eixoY cs 
 		
 numeroMovimentos :: Int->Int ->Tempo->[Forca]->[Corpo]->[Corpo]
@@ -162,15 +229,16 @@ numeroMovimentos chunks n dtempo forca corpo = do
 										 let coord0 =   eixoX corpo
 										 let coord1 =   eixoY corpo
 										 --let coord = ((minimum coord0,maximum coord0),(minimum coord1,maximum coord1),2)
-										 let coord = ((-1.5*10^51,1.5*10^51),(-1.5*10^51,1.5*10^51),2)
-										 let arvore = populaArvore (length corpo) corpo  coord
+										 let coord = ((-1.5*10^11,1.5*10^11),(-1.5*10^11,1.5*10^11),2) -- distancia máxima possivel entre corpos para distancia maiores 0
+										 let arvore = runEval $ populaArvore (length corpo) corpo  coord
 										 let forcaTotal = runEval( forcaTotalParalelo arvore particao)
 										 let teste = movimento (60*60) forcaTotal  corpo
 										 teste++numeroMovimentos chunks (n-1) dtempo forca (teste)												
 	
 
 movimento :: Tempo->[Forca]->[Corpo]->[Corpo]
-movimento _ [] [] = []
+movimento _ [] _ = []
+movimento _ _ [] = []
 movimento dtempo (forca:forcaxs) (corposAntes:corposAntesxs) = do 
 										--let forcax = (raiovetorial forca (0,0))*cos(angulovetorial forca (0,0))
 										--let forcay = (raiovetorial forca (0,0))*sin(angulovetorial forca (0,0))
@@ -189,11 +257,13 @@ linhaNormal c tamanhoChunk= chunksOf tamanhoChunk c
 										
 forcaTotalParalelo :: (QuadTree a Massa Posicao Coordenadas)->[[Corpo]]->Eval [ Forca]
 forcaTotalParalelo  _ [] = return []
-forcaTotalParalelo	arvore (c:cs) = do
-							p1 <- rpar(forcaTotalTodosCorpos c arvore) 
+forcaTotalParalelo	arvore (c:cs) = do	
+							p1 <- rpar(force $ forcaTotalTodosCorpos c arvore) 
 							p2 <- forcaTotalParalelo arvore cs 			
-							rdeepseq p1
+							rseq p1
 							return (p1++p2)  
+							
+							
 										
 									
 fstTripla (a,b,c) = a
@@ -230,7 +300,7 @@ main  =
 	t0 <- getCurrentTime
 	corpos <- randomBodies numeroCorpos
 
-	let arvore = populaArvore (length corpos) corpos  coord
+	let arvore = runEval $ populaArvore (length corpos) corpos  coord
 	let particao = linhaNormal  corpos (numeroCorpos `div` cores)
 	let forcaTotal = runEval( forcaTotalParalelo arvore particao)
 	let chunks = numeroCorpos `div` cores
