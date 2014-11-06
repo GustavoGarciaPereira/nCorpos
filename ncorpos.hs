@@ -109,7 +109,7 @@ forcaTotalParalelo  _ [] = return []
 forcaTotalParalelo	c0 (c:cs) = do
 							p1 <- rpar( force (forcaTotalTodosCorpos c0 c)) 
 							p2 <- forcaTotalParalelo c0 cs 			
-							--rdeepseq p1
+							rseq p1
 							return (p1++p2)  
 
 								
@@ -125,10 +125,6 @@ randomBodies len =
           b <- do mass <- getStdRandom (randomR (1e15,8e30))
                   x    <- getStdRandom (randomR (-1.5*10^11,1.5*10^11))
                   y    <- getStdRandom (randomR (-1.5*10^11,1.5*10^11))
-                  --z    <- getStdRandom (randomR (-8e8,8e8))
-                  --dx   <- getStdRandom (randomR (-5e3,5e3))
-                  --dy   <- getStdRandom (randomR (-5e3,5e3))
-                  --dz   <- getStdRandom (randomR (-5e3,5e3))
                   return ((x,y),(mass),(0,0))
                  
           l <- randomBodies (len-1)
@@ -145,9 +141,9 @@ main = do
   let particao = linhaNormal  corpos (numeroCorpos `div` cores)
   let forcaTotal = runEval( forcaTotalParalelo corpos particao)
   
-  t1 <- ( numeroMovimentos (numeroCorpos `div` cores) 100 (60*60) forcaTotal corpos) `deepseq` getCurrentTime
+  t1 <- ( numeroMovimentos (numeroCorpos `div` cores) qtdMovimentos (60*60) forcaTotal corpos) `deepseq` getCurrentTime
 
-  putStrLn $ (show $ diffUTCTime t1 t0) 	
+  putStrLn $ ( (show $ diffUTCTime t1 t0)++ ", " ++ (show $ (numeroCorpos))++ ", " ++ (show $ (cores))++ ", " ++ (show $ (qtdMovimentos))) 	
   where
   processaArgs args = case args of
     (a:b:c:_) -> (read a,read b,read c)
