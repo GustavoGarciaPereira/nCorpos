@@ -1,8 +1,3 @@
---{-# LANGUAGE DeriveGeneric #-}
---{-# LANGUAGE TemplateHaskell #-}
---import Control.DeepSeq.TH
---import GHC.Generics
---import Control.DeepSeq.Generics
 import System.Environment
 --import StateUtil
 --import Graphics.Rendering.OpenGL
@@ -349,17 +344,15 @@ main  =
 	
 	t2 <- getCurrentTime
 	let particao = linhaNormal  corpos (numeroCorpos `div` cores)
-	let t10 = (runEval $ populaArvore (length corpos) (length corpos) corpos  coord)
+
 	--t3 <-  t10 `deepseq` getCurrentTime
 	
 	--putStrLn $ ((show $ diffUTCTime t3 t2))
 	--let forcaTotal = runEval( forcaTotalParalelo arvore particao)
 	let chunks = numeroCorpos `div` cores
-	t4 <- getCurrentTime
-	t5 <-  runEval( forcaTotalParalelo (force $runEval $ populaArvore (length corpos) (length corpos) corpos  coord) particao) `deepseq` getCurrentTime--( numeroMovimentos chunks qtdMovimentos (tempo) [] corpos) `deepseq` getCurrentTime
-  
+
 	t1 <- ( numeroMovimentos chunks qtdMovimentos (tempo) [] corpos) `deepseq` getCurrentTime
-	
+
 	putStrLn $ ((show $ diffUTCTime t1 t0) ++ ", " ++ (show $ (numeroCorpos))++ ", " ++ (show $ (cores))++ ", " ++ (show $ (qtdMovimentos)))  
 	where
    -- define parâmetros default caso não sejam especificados
