@@ -12,12 +12,14 @@ import System.Random
 import Data.Time.Clock
 import Control.DeepSeq
 
-g = 6.674287*10**(-11)
+g = 6.674287*10**(-11) -- constante gravitacional
 instance NFData CDouble -- Necessário para usar deepseq em GLfloat
 
-forcaGravitacional m1 m2 r = if r == 0  then  0 
-							 else if r<0 then -g*m1*m2/r**2
-								  else g*m1*m2/r**2
+
+forcaGravitacional m1 m2 r =  -- calcula da força gravitacional entre dois corpos
+	if r == 0  then  0 
+	else if r<0 then -g*m1*m2/r**2
+	    else g*m1*m2/r**2
 	
 velocidadefinal velocidadeinicial dtempo forca massa =velocidadeinicial+dtempo*forca/massa
 -- dv = distancia/tempo
@@ -47,76 +49,75 @@ type Aceleracao = (X,Y)
 type Tempo = GLdouble
 
 
-
+-- força que todos os corpos vizinhos exercem em um corpo individual
 forcaIndividual :: [Corpo] -> Corpo -> [Forca]
 forcaIndividual f corpo = map (\(posicao,massa,velocidade) -> do 
-																let distancia = subtracaovetorial  posicao (fstTripla corpo) 
-																let raio = raiovetorial distancia
-																let angulo = if (fst distancia) == 0 then pi/2 
-																			 else abs (angulovetorial distancia)
+	let distancia = subtracaovetorial  posicao (fstTripla corpo) 
+	let raio = raiovetorial distancia
+	let angulo = if (fst distancia) == 0 then pi/2 
+				 else abs (angulovetorial distancia)
+															
+	let forca = forcaGravitacional massa (sndTripla corpo) raio
+	let s1 = if (fst distancia) < 0 then -1
+			 else 1
 																
-																let forca = forcaGravitacional massa (sndTripla corpo) raio
-																--(forca,0)
-																let s1 = if (fst distancia) < 0 then -1
-																		 else 1
+	let s2 = if (snd distancia) <0 then -1
+			 else  1
 																
-																let s2 = if (snd distancia) <0 then -1
-																		 else  1
-																
-																(s1*forca*cos angulo,s2*forca*sin angulo) 															
-																) f
+	(s1*forca*cos angulo,s2*forca*sin angulo) 															
+	) f
 
-
+-- somatorio das forças em um corpo
 forcaTotalUmCorpo :: [Forca] -> Forca
 forcaTotalUmCorpo f  = foldl (\a (x,y)->(fst a +x, snd a+y)) (0,0) f 
- 
+
+--chama as funções anteriores para realizar em todos os corpos
 forcaTotalTodosCorpos :: [Corpo]->[Corpo]->[Forca]
 forcaTotalTodosCorpos corpos corposIterados = do 
-													let f1 = map(\c -> forcaIndividual corpos c) corposIterados
-													map (\forcas ->forcaTotalUmCorpo forcas   ) f1
-
-
-
-													
-
+	let f1 = map(\c -> forcaIndividual corpos c) corposIterados
+	map (\forcas ->forcaTotalUmCorpo forcas   ) f1
+		
+-- quantidade de movimentos que os corpos realizam , onde cada movimento representa 60 minutos		
 numeroMovimentos :: Int->Int ->Tempo->[Forca]->[Corpo]->[Corpo]
 numeroMovimentos _ 0 _ _ _ =[]
 numeroMovimentos chunks n dtempo forca corpo = do
-										 let particao = linhaNormal  corpo (chunks)
-										 let forcaTotal = runEval( forcaTotalParalelo corpo particao)
-										 let teste = movimento (60*60) forcaTotal  corpo
-										 teste++numeroMovimentos chunks (n-1) dtempo forca (teste)												
-													
+	let particao = linhaNormal  corpo (chunks)
+	let forcaTotal = runEval( forcaTotalParalelo corpo particao)
+	let teste = movimento (60*60) forcaTotal  corpo
+	teste++numeroMovimentos chunks (n-1) dtempo forca (teste)												
+		
+--realização dos movimentos de cada corpo 		
 movimento :: Tempo->[Forca]->[Corpo]->[Corpo]
 movimento _ [] [] = []
 movimento dtempo (forca:forcaxs) (corposAntes:corposAntesxs) = do 
-										--let forcax = (raiovetorial forca (0,0))*cos(angulovetorial forca (0,0))
-										--let forcay = (raiovetorial forca (0,0))*sin(angulovetorial forca (0,0))
-										let massa = sndTripla corposAntes
-										let newVelocidadex =( velocidadefinal (fst(thdTripla corposAntes)) dtempo (fst forca) massa)
-										let newVelocidadey = ( velocidadefinal (snd(thdTripla corposAntes)) dtempo (snd forca) massa)
-										let newVelocidade = (newVelocidadex,newVelocidadey)
-										let newPosicaox= fst(fstTripla(corposAntes))+ newVelocidadex*dtempo
-										let newPosicaoy =snd(fstTripla(corposAntes))+ newVelocidadey*dtempo
-										let newPosicao = (newPosicaox,newPosicaoy) 
-										[(newPosicao,massa,newVelocidade)]++movimento dtempo  forcaxs  corposAntesxs
+	let massa = sndTripla corposAntes
+	let newVelocidadex =( velocidadefinal (fst(thdTripla corposAntes)) dtempo (fst forca) massa)
+	let newVelocidadey = ( velocidadefinal (snd(thdTripla corposAntes)) dtempo (snd forca) massa)
+	let newVelocidade = (newVelocidadex,newVelocidadey)
+	let newPosicaox= fst(fstTripla(corposAntes))+ newVelocidadex*dtempo
+	let newPosicaoy =snd(fstTripla(corposAntes))+ newVelocidadey*dtempo
+	let newPosicao = (newPosicaox,newPosicaoy) 
+	[(newPosicao,massa,newVelocidade)]++movimento dtempo  forcaxs  corposAntesxs
 
+--particiona os dados para depois realizar o processameto paralelo
 linhaNormal :: [Corpo]->Int-> [[Corpo]]
 linhaNormal c tamanhoChunk= chunksOf tamanhoChunk c 
-										
+		
+--realização do cálculo das forças em paralelo		
 forcaTotalParalelo :: [Corpo]->[[Corpo]]->Eval [ Forca]
 forcaTotalParalelo  _ [] = return []
 forcaTotalParalelo	c0 (c:cs) = do
-							p1 <- rpar( force (forcaTotalTodosCorpos c0 c)) 
-							p2 <- forcaTotalParalelo c0 cs 			
-							rseq p1
-							return (p1++p2)  
+	p1 <- rpar( force (forcaTotalTodosCorpos c0 c)) 
+	p2 <- forcaTotalParalelo c0 cs 			
+	rseq p1
+	return (p1++p2)  
 
 								
 fstTripla (a,b,c) = a
 sndTripla (a,b,c)  = b 
 thdTripla (a,b,c)  = c
 
+--geração dos corpos de forma randômica
 randomBodies ::  Int -> IO [Corpo]
 randomBodies len = 
    if len==0
@@ -131,7 +132,7 @@ randomBodies len =
           return $ (b:l) 
 	  
 main :: IO ()
-main = do
+main = do 
   (_, args) <- getArgsAndInitialize 
   let (numeroCorpos,qtdMovimentos,cores) = processaArgs args
   corpos <- randomBodies numeroCorpos

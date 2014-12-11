@@ -1,0 +1,11 @@
+library(reshape)
+library(ggplot2)
+library(scales)
+library(mgcv)
+
+
+pontos = read.table("nCorposEscalabilidade.tsv",sep = ",",header = T) 
+pontosa= read.table("nCorposEscalabilidade1.tsv",sep = ",",header = T)
+
+pontos[1] = pontosa[1]/pontos[1]
+m<-qplot(Corpos,Tempo, data= pontos,ylim=c(0,7),xlab="Corpos",ylab="Aceleração", colour=Nucleos, geom = c("point", "smooth"),method = "loess", formula = y ~ log(x))+theme(axis.text=element_text(size=26,colour="black"),axis.title=element_text(size=20,face="bold"))+ theme(axis.text.x=element_text(colour="black",size=20),axis.text.y=element_text(colour="black",size=20),legend.text  = element_text(colour="black", size=20),legend.title  = element_text(colour="black", size=18))
